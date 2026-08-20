@@ -89,6 +89,7 @@ Full synthetic demo with plotting:
 - examples/basic_density_sampling.py
 - examples/compare_samplers.py
 - examples/modifier_effects.py
+- examples/norwegian_arctic_case/README.md
 
 ## Diagnostics Included
 
@@ -131,4 +132,8 @@ Run example (with plotting):
 /bin/python3 examples/basic_density_sampling.py
 /bin/python3 examples/compare_samplers.py
 /bin/python3 examples/modifier_effects.py
+/bin/python3 -m examples.norwegian_arctic_case.run
 ```
+
+The Nordic/Arctic benchmark is fully synthetic and does not require external
+bathymetry files or network access.
