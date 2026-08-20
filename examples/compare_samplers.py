@@ -11,6 +11,7 @@ from wave_sampling.density.modifiers import (
 from wave_sampling.diagnostics.metrics import compute_sampling_diagnostics
 from wave_sampling.samplers.farthest_point import density_weighted_farthest_point
 from wave_sampling.samplers.lloyd_cvt import density_weighted_lloyd_cvt
+from wave_sampling.samplers.optimal_transport import density_weighted_optimal_transport
 
 
 def build_comparison_density(
@@ -38,20 +39,30 @@ def build_comparison_density(
 
     dx_hi_m = coordinates_m[:, 0] - 32_000.0
     dy_hi_m = coordinates_m[:, 1] - 58_000.0
-    high_preference = 1.0 + 3.0 * np.exp(
-        -0.5 * ((dx_hi_m / 15_000.0) ** 2 + (dy_hi_m / 11_000.0) ** 2)
+    high_preference = np.add(
+        1.0,
+        np.multiply(
+            3.0,
+            np.exp(-0.5 * ((dx_hi_m / 15_000.0) ** 2 + (dy_hi_m / 11_000.0) ** 2)),
+        ),
     )
 
     radial_lr_m = np.sqrt(
         (coordinates_m[:, 0] - 100_000.0) ** 2 + (coordinates_m[:, 1] - 14_000.0) ** 2
     )
     low_region = gaussian_weight(radial_lr_m, center=0.0, sigma=20_000.0)
-    low_preference = 1.0 - 0.75 * low_region
+    low_preference = np.subtract(1.0, np.multiply(0.75, low_region))
 
-    north_preference = 0.65 + 0.35 * smootherstep(
-        coordinates_m[:, 1],
-        12_000.0,
-        72_000.0,
+    north_preference = np.add(
+        0.65,
+        np.multiply(
+            0.35,
+            smootherstep(
+                coordinates_m[:, 1],
+                12_000.0,
+                72_000.0,
+            ),
+        ),
     )
 
     shape_values = compose_positive_factors(
@@ -74,7 +85,7 @@ def run_sampler_comparison(
     n_points: int,
     max_iterations: int = 30,
 ) -> dict[str, dict[str, float | int | bool]]:
-    """Run both samplers and return compact comparison diagnostics."""
+    """Run all deterministic samplers and return compact comparison diagnostics."""
     fp_a = density_weighted_farthest_point(density_field, n_points=n_points)
     fp_b = density_weighted_farthest_point(density_field, n_points=n_points)
 
@@ -89,8 +100,18 @@ def run_sampler_comparison(
         max_iterations=max_iterations,
     )
 
+    ot_a = density_weighted_optimal_transport(
+        density_field,
+        n_points=n_points,
+    )
+    ot_b = density_weighted_optimal_transport(
+        density_field,
+        n_points=n_points,
+    )
+
     diag_fp = compute_sampling_diagnostics(fp_a, density_field)
     diag_cvt = compute_sampling_diagnostics(cvt_a, density_field)
+    diag_ot = compute_sampling_diagnostics(ot_a, density_field)
 
     return {
         "density_weighted_farthest_point": {
@@ -118,6 +139,20 @@ def run_sampler_comparison(
             ),
             "iterations": int(cvt_a.density_summary.get("iterations", 0)),
         },
+        "density_weighted_optimal_transport": {
+            "n_selected": ot_a.n_selected,
+            "deterministic_repeat": bool(
+                np.array_equal(ot_a.selected_indices, ot_b.selected_indices)
+            ),
+            "hard_constraint_violations": int(diag_ot["hard_constraint_violations"]),
+            "nn_mean_m": float(diag_ot["nearest_neighbour"]["mean"]),
+            "density_l1": float(diag_ot["density_reproduction"]["normalized_l1_error"]),
+            "density_l2": float(diag_ot["density_reproduction"]["normalized_l2_error"]),
+            "iterations": int(ot_a.density_summary.get("iterations", 0)),
+            "max_mass_imbalance": float(
+                ot_a.density_summary.get("max_mass_imbalance", float("nan"))
+            ),
+        },
     }
 
 
@@ -141,6 +176,7 @@ def main() -> None:
 
     fp = density_weighted_farthest_point(density_field, n_points=n_points)
     cvt = density_weighted_lloyd_cvt(density_field, n_points=n_points)
+    ot = density_weighted_optimal_transport(density_field, n_points=n_points)
 
     try:
         import matplotlib.pyplot as plt
@@ -150,11 +186,12 @@ def main() -> None:
             "Install with: /bin/python3 -m pip install -e .[plot]"
         ) from exc
 
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5), sharex=True, sharey=True)
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5), sharex=True, sharey=True)
 
     for ax, result, title in (
         (axes[0], fp, "density_weighted_farthest_point"),
         (axes[1], cvt, "density_weighted_lloyd_cvt"),
+        (axes[2], ot, "density_weighted_optimal_transport"),
     ):
         sc = ax.scatter(
             density_field.coordinates[:, 0],

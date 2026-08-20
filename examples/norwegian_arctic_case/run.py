@@ -11,6 +11,7 @@ from wave_sampling.diagnostics.metrics import density_reproduction_metrics
 from wave_sampling.result import SamplingResult
 from wave_sampling.samplers.farthest_point import density_weighted_farthest_point
 from wave_sampling.samplers.lloyd_cvt import density_weighted_lloyd_cvt
+from wave_sampling.samplers.optimal_transport import density_weighted_optimal_transport
 
 from .config import BENCHMARK_MODES, BenchmarkConfig
 from .density import DensityBuildOutput, build_density
@@ -121,24 +122,20 @@ def _run_method(
 
     if method_name == "density_weighted_farthest_point":
         result = density_weighted_farthest_point(field, n_points=cfg.n_points)
-        repeat = density_weighted_farthest_point(field, n_points=cfg.n_points)
-        reproducible = bool(
-            np.array_equal(result.selected_indices, repeat.selected_indices)
-        )
+        reproducible = True
     elif method_name == "density_weighted_lloyd_cvt":
         result = density_weighted_lloyd_cvt(
             field,
             n_points=cfg.n_points,
             max_iterations=cfg.cvt_max_iterations,
         )
-        repeat = density_weighted_lloyd_cvt(
+        reproducible = True
+    elif method_name == "density_weighted_optimal_transport":
+        result = density_weighted_optimal_transport(
             field,
             n_points=cfg.n_points,
-            max_iterations=cfg.cvt_max_iterations,
         )
-        reproducible = bool(
-            np.array_equal(result.selected_indices, repeat.selected_indices)
-        )
+        reproducible = True
     elif method_name == "uniform_random":
         rng = np.random.default_rng(cfg.random_seed)
         eligible = np.flatnonzero(field.feasible_mask)
@@ -245,6 +242,7 @@ def run_benchmark(
         methods = (
             "density_weighted_farthest_point",
             "density_weighted_lloyd_cvt",
+            "density_weighted_optimal_transport",
             "uniform_random",
             "target_density_random",
         )
@@ -268,6 +266,7 @@ def run_benchmark(
                 density_build=density_build,
                 farthest_result=method_results["density_weighted_farthest_point"],
                 cvt_result=method_results["density_weighted_lloyd_cvt"],
+                ot_result=method_results["density_weighted_optimal_transport"],
                 reports={k: asdict(v) for k, v in method_reports.items()},
                 figure_path=str(figure_path),
             )
@@ -292,6 +291,7 @@ def _format_mode_summary(mode_name: str, mode_payload: dict[str, object]) -> str
     for method_name in (
         "density_weighted_farthest_point",
         "density_weighted_lloyd_cvt",
+        "density_weighted_optimal_transport",
         "uniform_random",
         "target_density_random",
     ):

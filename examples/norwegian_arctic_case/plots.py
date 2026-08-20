@@ -33,6 +33,7 @@ def save_composite_figure(
     density_build: DensityBuildOutput,
     farthest_result: SamplingResult,
     cvt_result: SamplingResult,
+    ot_result: SamplingResult,
     reports: dict[str, dict[str, Any]],
     figure_path: str,
 ) -> None:
@@ -128,12 +129,16 @@ def save_composite_figure(
     emp_cvt = _empirical_density(
         cvt_result.selected_indices, field.n_candidates, domain.cell_area_m2
     )
+    emp_ot = _empirical_density(
+        ot_result.selected_indices, field.n_candidates, domain.cell_area_m2
+    )
     rho = field.density
 
     ax5.scatter(rho, emp_fp, s=6, alpha=0.25, label="farthest")
     ax5.scatter(rho, emp_cvt, s=6, alpha=0.25, label="cvt")
+    ax5.scatter(rho, emp_ot, s=6, alpha=0.25, label="ot")
     low = 0.0
-    high = max(np.max(rho), np.max(emp_fp), np.max(emp_cvt))
+    high = max(np.max(rho), np.max(emp_fp), np.max(emp_cvt), np.max(emp_ot))
     ax5.plot([low, high], [low, high], "k--", linewidth=1.0)
     ax5.set_title("Target vs Empirical Density")
     ax5.set_xlabel("target rho")
@@ -143,8 +148,10 @@ def save_composite_figure(
     ax6 = axs[6]
     nn_fp = _nearest_neighbour_distances(farthest_result.selected_coordinates)
     nn_cvt = _nearest_neighbour_distances(cvt_result.selected_coordinates)
+    nn_ot = _nearest_neighbour_distances(ot_result.selected_coordinates)
     ax6.hist(nn_fp / 1000.0, bins=24, alpha=0.65, label="farthest")
     ax6.hist(nn_cvt / 1000.0, bins=24, alpha=0.65, label="cvt")
+    ax6.hist(nn_ot / 1000.0, bins=24, alpha=0.65, label="ot")
     ax6.set_title("Nearest-Neighbour Distance Distributions")
     ax6.set_xlabel("distance (km)")
     ax6.legend(loc="upper right")
@@ -176,10 +183,13 @@ def save_composite_figure(
     text = (
         f"Hard violations fp={reports['density_weighted_farthest_point']['infeasible_selected']}\n"
         f"Hard violations cvt={reports['density_weighted_lloyd_cvt']['infeasible_selected']}\n"
+        f"Hard violations ot={reports['density_weighted_optimal_transport']['infeasible_selected']}\n"
         f"L1 fp={reports['density_weighted_farthest_point']['normalized_l1_error']:.3f}\n"
         f"L1 cvt={reports['density_weighted_lloyd_cvt']['normalized_l1_error']:.3f}\n"
+        f"L1 ot={reports['density_weighted_optimal_transport']['normalized_l1_error']:.3f}\n"
         f"NN cv fp={reports['density_weighted_farthest_point']['nn_cv']:.3f}\n"
-        f"NN cv cvt={reports['density_weighted_lloyd_cvt']['nn_cv']:.3f}"
+        f"NN cv cvt={reports['density_weighted_lloyd_cvt']['nn_cv']:.3f}\n"
+        f"NN cv ot={reports['density_weighted_optimal_transport']['nn_cv']:.3f}"
     )
     ax8.text(0.05, 0.95, text, va="top", ha="left", fontsize=11)
 

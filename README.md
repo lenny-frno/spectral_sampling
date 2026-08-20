@@ -32,12 +32,13 @@ Hard constraints define whether sampling is allowed at a location.
 
 Soft constraints modify preference weight, not feasibility. For example, distance-from-boundary can reduce probability-like preference near a boundary, but hard exclusion is still handled by feasible_mask.
 
-## Current Sampler
+## Samplers
 
 Implemented samplers:
 
 - density_weighted_farthest_point
 - density_weighted_lloyd_cvt
+- density_weighted_optimal_transport
 
 Greedy score:
 
@@ -59,6 +60,19 @@ eligible candidates.
 Important: this is a deterministic discrete CVT heuristic. It does not mathematically
 guarantee global optimality or exact density reproduction.
 
+For density-weighted optimal transport on a discrete candidate grid, the formulation is:
+
+- source measure: N equal point masses (one per output point)
+- target measure: candidate-cell masses m_i = rho_i * area_i over feasible candidates
+- cost: squared Euclidean distance in projected metric coordinates
+
+The implementation uses a deterministic semi-discrete OT approximation with power-diagram
+assignments and transport potentials, then projects generators back to unique feasible
+candidate indices.
+
+Important: this is an OT-inspired discrete approximation. It does not guarantee the exact
+global optimum of the continuous OT problem.
+
 ## Reproducibility
 
 The sampler is deterministic by construction with stable tie-breaking (lower index wins ties through stable argmax behavior).
@@ -72,6 +86,7 @@ import numpy as np
 from wave_sampling.density.field import DensityField
 from wave_sampling.samplers.farthest_point import density_weighted_farthest_point
 from wave_sampling.samplers.lloyd_cvt import density_weighted_lloyd_cvt
+from wave_sampling.samplers.optimal_transport import density_weighted_optimal_transport
 
 coords = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
 shape = np.array([1.0, 2.0, 1.0, 1.0])
@@ -80,8 +95,10 @@ feasible = np.array([True, True, True, True])
 field = DensityField.from_shape(coords, shape, feasible, n_points=2)
 result_fp = density_weighted_farthest_point(field, n_points=2)
 result_cvt = density_weighted_lloyd_cvt(field, n_points=2)
+result_ot = density_weighted_optimal_transport(field, n_points=2)
 print(result_fp.selected_indices)
 print(result_cvt.selected_indices)
+print(result_ot.selected_indices)
 ```
 
 Full synthetic demo with plotting:
@@ -102,14 +119,9 @@ Full synthetic demo with plotting:
 - Candidate set is discrete (no continuous-domain sampling yet)
 - Both implemented samplers are deterministic heuristics, so diagnostics remain
 	necessary to evaluate density reproduction and regularity on each use case
+- OT mass balancing is approximate on discrete indivisible candidate masses; attainable
+	imbalance is bounded by the largest candidate mass unit
 - Density reproduction diagnostics are candidate-grid based and intentionally simple
-
-## Planned Algorithms (future)
-
-- density-adapted Poisson-disk
-- optimal transport based methods
-
-These are intentionally not included in this first milestone.
 
 ## Development
 
@@ -137,3 +149,24 @@ Run example (with plotting):
 
 The Nordic/Arctic benchmark is fully synthetic and does not require external
 bathymetry files or network access.
+
+## Next steps
+
+1. [HIGH] Add explicit per-generator transport-mass diagnostics in OT and persist them in benchmark outputs.
+	Reason: current OT diagnostics report only aggregate mass imbalance and make convergence/failure triage harder on realistic cases.
+
+2. [HIGH] Add disconnected-component-aware OT initialization with per-component minimum point quotas.
+	Reason: density-driven initialization can still under-seed tiny but nonzero-mass components before transport balancing.
+
+3. [MEDIUM] Profile OT assignment on large grids (>1e6 candidates) and replace brute-force chunked center distances with KD-tree candidate pruning if assignment dominates runtime.
+	Reason: current assignment is robust but still evaluates many center distances per iteration.
+
+4. [MEDIUM] Add optional local regularization pass after OT convergence (small fixed-count Lloyd refinement under fixed feasible candidates).
+	Reason: this can improve nearest-neighbour regularity in steep density gradients without changing hard-constraint handling.
+
+5. [LOW] Add benchmark export to CSV/Parquet for method-comparison tables across parameter sweeps.
+	Reason: persistent tabular outputs make method regression tracking easier than console summaries alone.
+
+### Recommended next feature
+
+Implement disconnected-component-aware OT seeding and balancing so each feasible component with nonzero target mass receives at least one generator when geometrically possible, then benchmark the impact on regional mass and regularity diagnostics.

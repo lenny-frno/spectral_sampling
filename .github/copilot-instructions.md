@@ -591,6 +591,9 @@ The README should contain a simple end-to-end example before detailed API docume
 
 Implement functionality incrementally.
 
+Before starting a substantial feature task, read README.md and especially the
+"Next steps" section to align with the current prioritized roadmap.
+
 For each significant feature:
 
 1. define the mathematical behavior;
@@ -621,7 +624,7 @@ The first milestone should be:
     +
     example
 
-Only after this baseline is stable should CVT and Poisson-disk methods be added.
+Only after this baseline is stable should CVT and optimal-transport methods be added.
 
 ---
 

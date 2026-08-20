@@ -51,6 +51,7 @@ On each density mode, the benchmark runs:
 
 - density_weighted_farthest_point
 - density_weighted_lloyd_cvt
+- density_weighted_optimal_transport
 - uniform_random (control)
 - target_density_random (control)
 

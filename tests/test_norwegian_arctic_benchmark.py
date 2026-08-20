@@ -120,6 +120,12 @@ def test_benchmark_runs_without_external_data() -> None:
         ]
         == cfg.n_points
     )
+    assert (
+        out["modes"]["baseline_hard"]["methods"]["density_weighted_optimal_transport"][
+            "actual_n"
+        ]
+        == cfg.n_points
+    )
 
 
 def test_configuration_reproducible_across_runs() -> None:

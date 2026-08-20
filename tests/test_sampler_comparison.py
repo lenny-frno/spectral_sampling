@@ -5,6 +5,7 @@ from wave_sampling.density.field import DensityField
 from wave_sampling.diagnostics.metrics import compute_sampling_diagnostics
 from wave_sampling.samplers.farthest_point import density_weighted_farthest_point
 from wave_sampling.samplers.lloyd_cvt import density_weighted_lloyd_cvt
+from wave_sampling.samplers.optimal_transport import density_weighted_optimal_transport
 
 
 def make_grid(nx: int, ny: int, spacing_m: float = 2_000.0) -> np.ndarray:
@@ -41,8 +42,9 @@ def test_cross_method_contracts_and_diagnostics(domain_builder) -> None:
 
     fp = density_weighted_farthest_point(field, n_points=n_points)
     cvt = density_weighted_lloyd_cvt(field, n_points=n_points)
+    ot = density_weighted_optimal_transport(field, n_points=n_points)
 
-    for result in (fp, cvt):
+    for result in (fp, cvt, ot):
         assert result.n_selected == n_points
         assert len(np.unique(result.selected_indices)) == n_points
         assert np.all(field.feasible_mask[result.selected_indices])
@@ -58,9 +60,12 @@ def test_cross_method_density_bias_on_same_domain() -> None:
 
     fp = density_weighted_farthest_point(field, n_points=n_points)
     cvt = density_weighted_lloyd_cvt(field, n_points=n_points)
+    ot = density_weighted_optimal_transport(field, n_points=n_points)
 
     fp_left_fraction = np.mean(fp.selected_coordinates[:, 0] < 24_000.0)
     cvt_left_fraction = np.mean(cvt.selected_coordinates[:, 0] < 24_000.0)
+    ot_left_fraction = np.mean(ot.selected_coordinates[:, 0] < 24_000.0)
 
     assert fp_left_fraction > 0.6
     assert cvt_left_fraction > 0.6
+    assert ot_left_fraction > 0.6

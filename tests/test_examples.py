@@ -18,6 +18,7 @@ def test_sampler_comparison_reports_deterministic_and_feasible() -> None:
     for method_name in (
         "density_weighted_farthest_point",
         "density_weighted_lloyd_cvt",
+        "density_weighted_optimal_transport",
     ):
         values = comparison[method_name]
         assert values["n_selected"] == n_points
