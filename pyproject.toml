@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling>=1.24.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "wave-sampling"
+version = "0.1.0"
+description = "Deterministic, density-based 2D spatial sampling"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "Wave Sampling Developers" }
+]
+dependencies = [
+  "numpy>=1.24"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0"
+]
+plot = [
+  "matplotlib>=3.7"
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"
