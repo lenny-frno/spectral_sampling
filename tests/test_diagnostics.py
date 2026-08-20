@@ -5,8 +5,10 @@ from wave_sampling.diagnostics.metrics import (
     compute_sampling_diagnostics,
     density_reproduction_metrics,
     nearest_neighbour_statistics,
+    poisson_disk_separation_metrics,
 )
 from wave_sampling.samplers.farthest_point import density_weighted_farthest_point
+from wave_sampling.samplers.poisson_disk import density_adapted_poisson_disk
 
 
 def make_grid(nx: int = 12, ny: int = 8) -> np.ndarray:
@@ -56,3 +58,29 @@ def test_compute_sampling_diagnostics_hard_violations_zero() -> None:
 
     diag = compute_sampling_diagnostics(result, field)
     assert diag["hard_constraint_violations"] == 0
+
+
+def test_poisson_separation_metrics_zero_violations() -> None:
+    coords = make_grid(16, 12)
+    m = coords.shape[0]
+    feasible = np.ones(m, dtype=bool)
+    q = np.ones(m)
+    field = DensityField.from_shape(coords, q, feasible, n_points=40)
+
+    result = density_adapted_poisson_disk(
+        field,
+        n_points=40,
+        seed=3,
+        spacing_scale=0.7,
+    )
+
+    sep = poisson_disk_separation_metrics(
+        selected_indices=result.selected_indices,
+        selected_coordinates=result.selected_coordinates,
+        target_density=field.density,
+        feasible_mask=field.feasible_mask,
+        spacing_scale=0.7,
+    )
+
+    assert sep["separation_violations"] == 0
+    assert np.isfinite(sep["ratio_median"])

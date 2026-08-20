@@ -8,9 +8,11 @@ import numpy as np
 import numpy.typing as npt
 
 from wave_sampling.diagnostics.metrics import density_reproduction_metrics
+from wave_sampling.diagnostics.metrics import poisson_disk_separation_metrics
 from wave_sampling.result import SamplingResult
 from wave_sampling.samplers.farthest_point import density_weighted_farthest_point
 from wave_sampling.samplers.lloyd_cvt import density_weighted_lloyd_cvt
+from wave_sampling.samplers.poisson_disk import density_adapted_poisson_disk
 
 from .config import BENCHMARK_MODES, BenchmarkConfig
 from .density import DensityBuildOutput, build_density
@@ -37,6 +39,7 @@ class MethodReport:
     nn_std_m: float
     nn_cv: float
     spacing_correlation: float
+    separation_violations: int | None
     reproducible_repeat: bool
 
 
@@ -139,6 +142,26 @@ def _run_method(
         reproducible = bool(
             np.array_equal(result.selected_indices, repeat.selected_indices)
         )
+    elif method_name == "density_adapted_poisson_disk":
+        result = density_adapted_poisson_disk(
+            field,
+            n_points=cfg.n_points,
+            seed=cfg.random_seed,
+            spacing_scale=cfg.poisson_spacing_scale,
+            max_attempts_per_active_point=cfg.poisson_max_attempts_per_active_point,
+            candidate_k_neighbors=cfg.poisson_candidate_k_neighbors,
+        )
+        repeat = density_adapted_poisson_disk(
+            field,
+            n_points=cfg.n_points,
+            seed=cfg.random_seed,
+            spacing_scale=cfg.poisson_spacing_scale,
+            max_attempts_per_active_point=cfg.poisson_max_attempts_per_active_point,
+            candidate_k_neighbors=cfg.poisson_candidate_k_neighbors,
+        )
+        reproducible = bool(
+            np.array_equal(result.selected_indices, repeat.selected_indices)
+        )
     elif method_name == "uniform_random":
         rng = np.random.default_rng(cfg.random_seed)
         eligible = np.flatnonzero(field.feasible_mask)
@@ -187,6 +210,17 @@ def _run_method(
         density_field_mass=float(cfg.n_points),
     )
 
+    separation_violations: int | None = None
+    if method_name == "density_adapted_poisson_disk":
+        sep_metrics = poisson_disk_separation_metrics(
+            selected_indices=result.selected_indices,
+            selected_coordinates=result.selected_coordinates,
+            target_density=field.density,
+            feasible_mask=field.feasible_mask,
+            spacing_scale=cfg.poisson_spacing_scale,
+        )
+        separation_violations = int(sep_metrics["separation_violations"])
+
     report = MethodReport(
         method=method_name,
         requested_n=cfg.n_points,
@@ -207,6 +241,7 @@ def _run_method(
         spacing_correlation=_spacing_correlation(
             result.selected_indices, density_build
         ),
+        separation_violations=separation_violations,
         reproducible_repeat=reproducible,
     )
 
@@ -245,6 +280,7 @@ def run_benchmark(
         methods = (
             "density_weighted_farthest_point",
             "density_weighted_lloyd_cvt",
+            "density_adapted_poisson_disk",
             "uniform_random",
             "target_density_random",
         )
@@ -268,7 +304,9 @@ def run_benchmark(
                 density_build=density_build,
                 farthest_result=method_results["density_weighted_farthest_point"],
                 cvt_result=method_results["density_weighted_lloyd_cvt"],
+                poisson_result=method_results["density_adapted_poisson_disk"],
                 reports={k: asdict(v) for k, v in method_reports.items()},
+                poisson_spacing_scale=cfg.poisson_spacing_scale,
                 figure_path=str(figure_path),
             )
 
@@ -292,6 +330,7 @@ def _format_mode_summary(mode_name: str, mode_payload: dict[str, object]) -> str
     for method_name in (
         "density_weighted_farthest_point",
         "density_weighted_lloyd_cvt",
+        "density_adapted_poisson_disk",
         "uniform_random",
         "target_density_random",
     ):

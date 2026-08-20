@@ -18,10 +18,15 @@ def test_sampler_comparison_reports_deterministic_and_feasible() -> None:
     for method_name in (
         "density_weighted_farthest_point",
         "density_weighted_lloyd_cvt",
+        "density_adapted_poisson_disk",
     ):
         values = comparison[method_name]
         assert values["n_selected"] == n_points
-        assert values["deterministic_repeat"] is True
+        if method_name == "density_adapted_poisson_disk":
+            assert values["seeded_repeat"] is True
+            assert values["separation_violations"] == 0
+        else:
+            assert values["deterministic_repeat"] is True
         assert values["hard_constraint_violations"] == 0
         assert np.isfinite(values["nn_mean_m"])
         assert np.isfinite(values["density_l1"])

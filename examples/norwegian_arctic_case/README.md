@@ -51,6 +51,7 @@ On each density mode, the benchmark runs:
 
 - density_weighted_farthest_point
 - density_weighted_lloyd_cvt
+- density_adapted_poisson_disk
 - uniform_random (control)
 - target_density_random (control)
 
@@ -66,6 +67,7 @@ For each method:
 - regional mass error (L1 and max)
 - nearest-neighbour statistics and coefficient of variation
 - spacing correlation with 1/sqrt(rho)
+- Poisson separation violations for the symmetric variable-radius rule
 - reproducibility check
 
 ## Running

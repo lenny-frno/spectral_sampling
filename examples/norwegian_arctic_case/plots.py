@@ -5,6 +5,7 @@ from typing import Any
 import numpy as np
 
 from wave_sampling.result import SamplingResult
+from wave_sampling.samplers.poisson_disk import density_to_nominal_radius
 
 from .density import DensityBuildOutput
 from .domain import SyntheticDomain
@@ -33,7 +34,9 @@ def save_composite_figure(
     density_build: DensityBuildOutput,
     farthest_result: SamplingResult,
     cvt_result: SamplingResult,
+    poisson_result: SamplingResult,
     reports: dict[str, dict[str, Any]],
+    poisson_spacing_scale: float,
     figure_path: str,
 ) -> None:
     try:
@@ -51,7 +54,7 @@ def save_composite_figure(
     feasible2d = domain.feasible_mask.astype(float)
     spacing2d = density_build.intermediates["desired_spacing_m"].reshape(shape2d)
 
-    fig, axes = plt.subplots(3, 3, figsize=(18, 14), constrained_layout=True)
+    fig, axes = plt.subplots(4, 3, figsize=(18, 18), constrained_layout=True)
     axs = axes.ravel()
 
     ax0 = axs[0]
@@ -122,34 +125,58 @@ def save_composite_figure(
     ax4.set_xlabel("x (m)")
 
     ax5 = axs[5]
+    ax5.pcolormesh(
+        domain.x_m,
+        domain.y_m,
+        np.where(domain.feasible_mask, 1.0, np.nan),
+        cmap="Greys",
+        shading="auto",
+        alpha=0.25,
+    )
+    ax5.scatter(
+        poisson_result.selected_coordinates[:, 0],
+        poisson_result.selected_coordinates[:, 1],
+        s=11,
+        c="#2a9d8f",
+    )
+    ax5.set_title("Poisson-Disk Selection (projected m)")
+    ax5.set_xlabel("x (m)")
+
+    ax6 = axs[6]
     emp_fp = _empirical_density(
         farthest_result.selected_indices, field.n_candidates, domain.cell_area_m2
     )
     emp_cvt = _empirical_density(
         cvt_result.selected_indices, field.n_candidates, domain.cell_area_m2
     )
+    emp_poisson = _empirical_density(
+        poisson_result.selected_indices, field.n_candidates, domain.cell_area_m2
+    )
     rho = field.density
 
-    ax5.scatter(rho, emp_fp, s=6, alpha=0.25, label="farthest")
-    ax5.scatter(rho, emp_cvt, s=6, alpha=0.25, label="cvt")
+    ax6.scatter(rho, emp_fp, s=6, alpha=0.25, label="farthest")
+    ax6.scatter(rho, emp_cvt, s=6, alpha=0.25, label="cvt")
+    ax6.scatter(rho, emp_poisson, s=6, alpha=0.25, label="poisson")
     low = 0.0
-    high = max(np.max(rho), np.max(emp_fp), np.max(emp_cvt))
-    ax5.plot([low, high], [low, high], "k--", linewidth=1.0)
-    ax5.set_title("Target vs Empirical Density")
-    ax5.set_xlabel("target rho")
-    ax5.set_ylabel("empirical rho")
-    ax5.legend(loc="upper left")
-
-    ax6 = axs[6]
-    nn_fp = _nearest_neighbour_distances(farthest_result.selected_coordinates)
-    nn_cvt = _nearest_neighbour_distances(cvt_result.selected_coordinates)
-    ax6.hist(nn_fp / 1000.0, bins=24, alpha=0.65, label="farthest")
-    ax6.hist(nn_cvt / 1000.0, bins=24, alpha=0.65, label="cvt")
-    ax6.set_title("Nearest-Neighbour Distance Distributions")
-    ax6.set_xlabel("distance (km)")
-    ax6.legend(loc="upper right")
+    high = max(np.max(rho), np.max(emp_fp), np.max(emp_cvt), np.max(emp_poisson))
+    ax6.plot([low, high], [low, high], "k--", linewidth=1.0)
+    ax6.set_title("Target vs Empirical Density")
+    ax6.set_xlabel("target rho")
+    ax6.set_ylabel("empirical rho")
+    ax6.legend(loc="upper left")
 
     ax7 = axs[7]
+    nn_fp = _nearest_neighbour_distances(farthest_result.selected_coordinates)
+    nn_cvt = _nearest_neighbour_distances(cvt_result.selected_coordinates)
+    nn_poisson = _nearest_neighbour_distances(poisson_result.selected_coordinates)
+    ax7.hist(nn_fp / 1000.0, bins=24, alpha=0.65, label="farthest")
+    ax7.hist(nn_cvt / 1000.0, bins=24, alpha=0.65, label="cvt")
+    ax7.hist(nn_poisson / 1000.0, bins=24, alpha=0.65, label="poisson")
+    ax7.set_title("Nearest-Neighbour Distance Distributions")
+    ax7.set_xlabel("distance (km)")
+    ax7.legend(loc="upper right")
+
+    ax8 = axs[8]
     keys = [
         "NorwegianSea",
         "BarentsSea",
@@ -163,24 +190,53 @@ def save_composite_figure(
     masses = [density_build.region_masses[k] / field.integrated_mass for k in keys]
     x = np.arange(len(keys))
     width = 0.4
-    ax7.bar(x - width / 2, targets, width=width, label="target")
-    ax7.bar(x + width / 2, masses, width=width, label="density")
-    ax7.set_xticks(x)
-    ax7.set_xticklabels(keys, rotation=30, ha="right")
-    ax7.set_ylim(0.0, max(max(targets), max(masses)) * 1.35)
-    ax7.set_title("Regional Mass Fractions")
-    ax7.legend(loc="upper right")
+    ax8.bar(x - width / 2, targets, width=width, label="target")
+    ax8.bar(x + width / 2, masses, width=width, label="density")
+    ax8.set_xticks(x)
+    ax8.set_xticklabels(keys, rotation=30, ha="right")
+    ax8.set_ylim(0.0, max(max(targets), max(masses)) * 1.35)
+    ax8.set_title("Regional Mass Fractions")
+    ax8.legend(loc="upper right")
 
-    ax8 = axs[8]
-    ax8.axis("off")
+    ax9 = axs[9]
+    ax9.axis("off")
     text = (
         f"Hard violations fp={reports['density_weighted_farthest_point']['infeasible_selected']}\n"
         f"Hard violations cvt={reports['density_weighted_lloyd_cvt']['infeasible_selected']}\n"
+        f"Hard violations pd={reports['density_adapted_poisson_disk']['infeasible_selected']}\n"
         f"L1 fp={reports['density_weighted_farthest_point']['normalized_l1_error']:.3f}\n"
         f"L1 cvt={reports['density_weighted_lloyd_cvt']['normalized_l1_error']:.3f}\n"
+        f"L1 pd={reports['density_adapted_poisson_disk']['normalized_l1_error']:.3f}\n"
         f"NN cv fp={reports['density_weighted_farthest_point']['nn_cv']:.3f}\n"
-        f"NN cv cvt={reports['density_weighted_lloyd_cvt']['nn_cv']:.3f}"
+        f"NN cv cvt={reports['density_weighted_lloyd_cvt']['nn_cv']:.3f}\n"
+        f"NN cv pd={reports['density_adapted_poisson_disk']['nn_cv']:.3f}\n"
+        f"PD sep violations={reports['density_adapted_poisson_disk']['separation_violations']}"
     )
-    ax8.text(0.05, 0.95, text, va="top", ha="left", fontsize=11)
+    ax9.text(0.05, 0.95, text, va="top", ha="left", fontsize=11)
+
+    ax10 = axs[10]
+    radius = density_to_nominal_radius(
+        density=field.density,
+        feasible_mask=field.feasible_mask,
+        spacing_scale=poisson_spacing_scale,
+    )
+    radius_plot = np.where(
+        field.feasible_mask,
+        radius,
+        np.nan,
+    ).reshape(shape2d)
+    im10 = ax10.pcolormesh(
+        domain.x_m,
+        domain.y_m,
+        radius_plot / 1000.0,
+        cmap="plasma",
+        shading="auto",
+    )
+    ax10.set_title("Poisson Nominal Radius (km)")
+    ax10.set_xlabel("x (m)")
+    fig.colorbar(im10, ax=ax10)
+
+    ax11 = axs[11]
+    ax11.axis("off")
 
     fig.savefig(figure_path, dpi=170)

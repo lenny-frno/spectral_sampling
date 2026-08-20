@@ -61,6 +61,9 @@ class BenchmarkConfig:
 
     cvt_max_iterations: int = 25
     random_seed: int = 7
+    poisson_spacing_scale: float = 0.75
+    poisson_max_attempts_per_active_point: int = 30
+    poisson_candidate_k_neighbors: int = 8
 
 
 BENCHMARK_MODES = ("baseline_hard", "baseline_smooth", "smooth_density")

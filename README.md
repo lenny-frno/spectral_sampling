@@ -38,6 +38,7 @@ Implemented samplers:
 
 - density_weighted_farthest_point
 - density_weighted_lloyd_cvt
+- density_adapted_poisson_disk
 
 Greedy score:
 
@@ -59,11 +60,29 @@ eligible candidates.
 Important: this is a deterministic discrete CVT heuristic. It does not mathematically
 guarantee global optimality or exact density reproduction.
 
+For density-adapted Poisson-disk, the local nominal radius is
+
+- r_i = alpha / sqrt(rho_i)
+
+where alpha is a configurable spacing scale (`spacing_scale`).
+
+Pairwise compatibility uses a symmetric separation rule:
+
+- d(i, j) >= 0.5 * (r_i + r_j)
+
+This avoids asymmetric acceptance rules for variable radii.
+
+Important: this radius relation is a nominal spacing model, not an exact density
+identity. The global scale alpha is application-dependent and should be calibrated.
+
 ## Reproducibility
 
 The sampler is deterministic by construction with stable tie-breaking (lower index wins ties through stable argmax behavior).
 
 Same inputs produce identical selected indices.
+
+For Poisson-disk sampling, reproducibility is controlled by an explicit seed passed
+to a local NumPy Generator (`np.random.default_rng(seed)`).
 
 ## Minimal API Example
 
@@ -72,6 +91,7 @@ import numpy as np
 from wave_sampling.density.field import DensityField
 from wave_sampling.samplers.farthest_point import density_weighted_farthest_point
 from wave_sampling.samplers.lloyd_cvt import density_weighted_lloyd_cvt
+from wave_sampling.samplers.poisson_disk import density_adapted_poisson_disk
 
 coords = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
 shape = np.array([1.0, 2.0, 1.0, 1.0])
@@ -80,8 +100,10 @@ feasible = np.array([True, True, True, True])
 field = DensityField.from_shape(coords, shape, feasible, n_points=2)
 result_fp = density_weighted_farthest_point(field, n_points=2)
 result_cvt = density_weighted_lloyd_cvt(field, n_points=2)
+result_pd = density_adapted_poisson_disk(field, n_points=2, seed=42, spacing_scale=0.8)
 print(result_fp.selected_indices)
 print(result_cvt.selected_indices)
+print(result_pd.selected_indices)
 ```
 
 Full synthetic demo with plotting:
@@ -96,6 +118,7 @@ Full synthetic demo with plotting:
 - nearest-neighbour summary statistics (min/mean/median/std/p05/p95)
 - density reproduction metrics (normalized L1, normalized L2, correlation)
 - hard-constraint violation count
+- Poisson separation diagnostics (symmetric-rule violations and nearest-distance to nominal-radius ratios)
 
 ## Current Limitations
 
@@ -103,10 +126,11 @@ Full synthetic demo with plotting:
 - Both implemented samplers are deterministic heuristics, so diagnostics remain
 	necessary to evaluate density reproduction and regularity on each use case
 - Density reproduction diagnostics are candidate-grid based and intentionally simple
+- Poisson-disk can fail to place exactly N points when spacing is too restrictive;
+  this raises a clear `PoissonDiskCapacityError` rather than silently returning fewer points
 
 ## Planned Algorithms (future)
 
-- density-adapted Poisson-disk
 - optimal transport based methods
 
 These are intentionally not included in this first milestone.

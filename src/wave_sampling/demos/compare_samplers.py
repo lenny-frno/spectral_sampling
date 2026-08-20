@@ -11,6 +11,7 @@ from wave_sampling.density.modifiers import (
 from wave_sampling.diagnostics.metrics import compute_sampling_diagnostics
 from wave_sampling.samplers.farthest_point import density_weighted_farthest_point
 from wave_sampling.samplers.lloyd_cvt import density_weighted_lloyd_cvt
+from wave_sampling.samplers.poisson_disk import density_adapted_poisson_disk
 
 
 def build_comparison_density(
@@ -26,6 +27,10 @@ def build_comparison_density(
     y_m = np.linspace(0.0, 80_000.0, ny)
     xx_m, yy_m = np.meshgrid(x_m, y_m)
     coordinates_m = np.column_stack([xx_m.ravel(), yy_m.ravel()])
+    dx_m = float(np.median(np.diff(x_m)))
+    dy_m = float(np.median(np.diff(y_m)))
+    cell_area_m2 = dx_m * dy_m
+    cell_areas_m2 = np.full(coordinates_m.shape[0], cell_area_m2, dtype=float)
 
     # Hard forbidden region (circular exclusion): cannot be sampled.
     cx_m, cy_m, radius_m = 70_000.0, 40_000.0, 12_000.0
@@ -66,6 +71,7 @@ def build_comparison_density(
         shape_values=shape_values,
         feasible_mask=feasible_mask,
         n_points=n_points,
+        cell_areas=cell_areas_m2,
     )
 
 
@@ -73,6 +79,8 @@ def run_sampler_comparison(
     density_field: DensityField,
     n_points: int,
     max_iterations: int = 30,
+    poisson_spacing_scale: float = 0.75,
+    poisson_seed: int = 42,
 ) -> dict[str, dict[str, float | int | bool]]:
     """Run both samplers and return compact comparison diagnostics."""
     fp_a = density_weighted_farthest_point(density_field, n_points=n_points)
@@ -89,8 +97,26 @@ def run_sampler_comparison(
         max_iterations=max_iterations,
     )
 
+    pd_a = density_adapted_poisson_disk(
+        density_field,
+        n_points=n_points,
+        seed=poisson_seed,
+        spacing_scale=poisson_spacing_scale,
+    )
+    pd_b = density_adapted_poisson_disk(
+        density_field,
+        n_points=n_points,
+        seed=poisson_seed,
+        spacing_scale=poisson_spacing_scale,
+    )
+
     diag_fp = compute_sampling_diagnostics(fp_a, density_field)
     diag_cvt = compute_sampling_diagnostics(cvt_a, density_field)
+    diag_pd = compute_sampling_diagnostics(
+        pd_a,
+        density_field,
+        poisson_spacing_scale=poisson_spacing_scale,
+    )
 
     return {
         "density_weighted_farthest_point": {
@@ -118,29 +144,58 @@ def run_sampler_comparison(
             ),
             "iterations": int(cvt_a.density_summary.get("iterations", 0)),
         },
+        "density_adapted_poisson_disk": {
+            "n_selected": pd_a.n_selected,
+            "seeded_repeat": bool(
+                np.array_equal(pd_a.selected_indices, pd_b.selected_indices)
+            ),
+            "hard_constraint_violations": int(diag_pd["hard_constraint_violations"]),
+            "nn_mean_m": float(diag_pd["nearest_neighbour"]["mean"]),
+            "density_l1": float(diag_pd["density_reproduction"]["normalized_l1_error"]),
+            "density_l2": float(diag_pd["density_reproduction"]["normalized_l2_error"]),
+            "separation_violations": int(
+                diag_pd["poisson_separation"]["separation_violations"]
+            ),
+        },
     }
 
 
 def main() -> None:
     n_points = 400
+    poisson_spacing_scale = 0.75
     density_field = build_comparison_density(n_points=n_points)
-    comparison = run_sampler_comparison(density_field, n_points=n_points)
+    comparison = run_sampler_comparison(
+        density_field,
+        n_points=n_points,
+        poisson_spacing_scale=poisson_spacing_scale,
+    )
 
     print("Sampler comparison on identical DensityField")
     print(f"Target integrated mass: {density_field.integrated_mass:.6f} points")
     for method_name, values in comparison.items():
         print(f"\\n{method_name}")
         print(f"  n_selected: {values['n_selected']}")
-        print(f"  deterministic_repeat: {values['deterministic_repeat']}")
+        if "deterministic_repeat" in values:
+            print(f"  deterministic_repeat: {values['deterministic_repeat']}")
+        if "seeded_repeat" in values:
+            print(f"  seeded_repeat: {values['seeded_repeat']}")
         print(f"  hard_constraint_violations: {values['hard_constraint_violations']}")
         print(f"  nn_mean_m: {values['nn_mean_m']:.3f}")
         print(f"  density_l1: {values['density_l1']:.6f}")
         print(f"  density_l2: {values['density_l2']:.6f}")
+        if "separation_violations" in values:
+            print(f"  separation_violations: {values['separation_violations']}")
         if "iterations" in values:
             print(f"  iterations: {values['iterations']}")
 
     fp = density_weighted_farthest_point(density_field, n_points=n_points)
     cvt = density_weighted_lloyd_cvt(density_field, n_points=n_points)
+    pd = density_adapted_poisson_disk(
+        density_field,
+        n_points=n_points,
+        seed=42,
+        spacing_scale=poisson_spacing_scale,
+    )
 
     try:
         import matplotlib.pyplot as plt
@@ -150,11 +205,12 @@ def main() -> None:
             "Install with: /bin/python3 -m pip install -e .[plot]"
         ) from exc
 
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5), sharex=True, sharey=True)
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5), sharex=True, sharey=True)
 
     for ax, result, title in (
         (axes[0], fp, "density_weighted_farthest_point"),
         (axes[1], cvt, "density_weighted_lloyd_cvt"),
+        (axes[2], pd, "density_adapted_poisson_disk"),
     ):
         sc = ax.scatter(
             density_field.coordinates[:, 0],

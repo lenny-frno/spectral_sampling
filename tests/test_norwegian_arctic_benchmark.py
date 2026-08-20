@@ -8,6 +8,7 @@ from examples.norwegian_arctic_case.domain import build_synthetic_domain
 from examples.norwegian_arctic_case.run import run_benchmark
 from wave_sampling.samplers.farthest_point import density_weighted_farthest_point
 from wave_sampling.samplers.lloyd_cvt import density_weighted_lloyd_cvt
+from wave_sampling.samplers.poisson_disk import density_adapted_poisson_disk
 
 
 def _small_cfg() -> BenchmarkConfig:
@@ -88,9 +89,22 @@ def test_deterministic_samplers_repeat_identical_outputs() -> None:
         n_points=cfg.n_points,
         max_iterations=cfg.cvt_max_iterations,
     )
+    pd_a = density_adapted_poisson_disk(
+        built.density_field,
+        n_points=cfg.n_points,
+        seed=cfg.random_seed,
+        spacing_scale=cfg.poisson_spacing_scale,
+    )
+    pd_b = density_adapted_poisson_disk(
+        built.density_field,
+        n_points=cfg.n_points,
+        seed=cfg.random_seed,
+        spacing_scale=cfg.poisson_spacing_scale,
+    )
 
     assert np.array_equal(fp_a.selected_indices, fp_b.selected_indices)
     assert np.array_equal(cvt_a.selected_indices, cvt_b.selected_indices)
+    assert np.array_equal(pd_a.selected_indices, pd_b.selected_indices)
 
 
 def test_selected_points_all_feasible() -> None:
@@ -104,9 +118,16 @@ def test_selected_points_all_feasible() -> None:
         n_points=cfg.n_points,
         max_iterations=cfg.cvt_max_iterations,
     )
+    pd = density_adapted_poisson_disk(
+        built.density_field,
+        n_points=cfg.n_points,
+        seed=cfg.random_seed,
+        spacing_scale=cfg.poisson_spacing_scale,
+    )
 
     assert np.all(built.density_field.feasible_mask[fp.selected_indices])
     assert np.all(built.density_field.feasible_mask[cvt.selected_indices])
+    assert np.all(built.density_field.feasible_mask[pd.selected_indices])
 
 
 def test_benchmark_runs_without_external_data() -> None:
@@ -119,6 +140,18 @@ def test_benchmark_runs_without_external_data() -> None:
             "actual_n"
         ]
         == cfg.n_points
+    )
+    assert (
+        out["modes"]["baseline_hard"]["methods"]["density_adapted_poisson_disk"][
+            "actual_n"
+        ]
+        == cfg.n_points
+    )
+    assert (
+        out["modes"]["baseline_hard"]["methods"]["density_adapted_poisson_disk"][
+            "separation_violations"
+        ]
+        == 0
     )
 
 

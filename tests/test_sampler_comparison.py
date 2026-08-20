@@ -5,6 +5,7 @@ from wave_sampling.density.field import DensityField
 from wave_sampling.diagnostics.metrics import compute_sampling_diagnostics
 from wave_sampling.samplers.farthest_point import density_weighted_farthest_point
 from wave_sampling.samplers.lloyd_cvt import density_weighted_lloyd_cvt
+from wave_sampling.samplers.poisson_disk import density_adapted_poisson_disk
 
 
 def make_grid(nx: int, ny: int, spacing_m: float = 2_000.0) -> np.ndarray:
@@ -41,13 +42,22 @@ def test_cross_method_contracts_and_diagnostics(domain_builder) -> None:
 
     fp = density_weighted_farthest_point(field, n_points=n_points)
     cvt = density_weighted_lloyd_cvt(field, n_points=n_points)
+    pd = density_adapted_poisson_disk(field, n_points=n_points, seed=7)
 
-    for result in (fp, cvt):
+    for result in (fp, cvt, pd):
         assert result.n_selected == n_points
         assert len(np.unique(result.selected_indices)) == n_points
         assert np.all(field.feasible_mask[result.selected_indices])
 
-        diag = compute_sampling_diagnostics(result, field)
+        if result.method == "density_adapted_poisson_disk":
+            diag = compute_sampling_diagnostics(
+                result,
+                field,
+                poisson_spacing_scale=1.0,
+            )
+            assert diag["poisson_separation"]["separation_violations"] == 0
+        else:
+            diag = compute_sampling_diagnostics(result, field)
         assert diag["hard_constraint_violations"] == 0
         assert np.isfinite(diag["density_reproduction"]["normalized_l1_error"])
         assert np.isfinite(diag["density_reproduction"]["normalized_l2_error"])
@@ -58,9 +68,14 @@ def test_cross_method_density_bias_on_same_domain() -> None:
 
     fp = density_weighted_farthest_point(field, n_points=n_points)
     cvt = density_weighted_lloyd_cvt(field, n_points=n_points)
+    pd_a = density_adapted_poisson_disk(field, n_points=n_points, seed=11)
+    pd_b = density_adapted_poisson_disk(field, n_points=n_points, seed=13)
 
     fp_left_fraction = np.mean(fp.selected_coordinates[:, 0] < 24_000.0)
     cvt_left_fraction = np.mean(cvt.selected_coordinates[:, 0] < 24_000.0)
 
     assert fp_left_fraction > 0.6
     assert cvt_left_fraction > 0.6
+
+    # Distinct seeds should typically produce distinct Poisson layouts.
+    assert not np.array_equal(pd_a.selected_indices, pd_b.selected_indices)

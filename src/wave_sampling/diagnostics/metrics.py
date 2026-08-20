@@ -7,6 +7,7 @@ import numpy.typing as npt
 
 from wave_sampling.density.field import DensityField
 from wave_sampling.result import SamplingResult
+from wave_sampling.samplers.poisson_disk import density_to_nominal_radius
 
 
 def nearest_neighbour_statistics(
@@ -122,9 +123,11 @@ def density_reproduction_metrics(
 def compute_sampling_diagnostics(
     result: SamplingResult,
     density_field: DensityField,
+    poisson_spacing_scale: float | None = None,
+    poisson_tolerance: float = 1e-12,
 ) -> dict[str, Any]:
     """Compute baseline diagnostics for a sampling result."""
-    return {
+    diagnostics: dict[str, Any] = {
         "hard_constraint_violations": hard_constraint_violations(
             result.selected_indices,
             density_field.feasible_mask,
@@ -138,4 +141,86 @@ def compute_sampling_diagnostics(
             density_field.feasible_mask,
             density_field.cell_areas,
         ),
+    }
+
+    if poisson_spacing_scale is not None:
+        diagnostics["poisson_separation"] = poisson_disk_separation_metrics(
+            selected_indices=result.selected_indices,
+            selected_coordinates=result.selected_coordinates,
+            target_density=density_field.density,
+            feasible_mask=density_field.feasible_mask,
+            spacing_scale=poisson_spacing_scale,
+            tolerance=poisson_tolerance,
+        )
+
+    return diagnostics
+
+
+def poisson_disk_separation_metrics(
+    selected_indices: npt.ArrayLike,
+    selected_coordinates: npt.ArrayLike,
+    target_density: npt.ArrayLike,
+    feasible_mask: npt.ArrayLike,
+    spacing_scale: float,
+    tolerance: float = 1e-12,
+) -> dict[str, float]:
+    """Validate variable-radius Poisson pairwise separation and spacing ratios.
+
+    Separation rule for indices i,j is
+        d(i,j) >= 0.5 * (r_i + r_j)
+    where r_i = spacing_scale / sqrt(rho_i) for feasible rho_i > 0.
+    """
+    idx = np.asarray(selected_indices, dtype=np.int64)
+    pts = np.asarray(selected_coordinates, dtype=float)
+    rho = np.asarray(target_density, dtype=float)
+    feasible = np.asarray(feasible_mask, dtype=bool)
+
+    if idx.ndim != 1:
+        raise ValueError("selected_indices must be 1D")
+    if pts.ndim != 2 or pts.shape[1] != 2:
+        raise ValueError("selected_coordinates must have shape (N, 2)")
+    if pts.shape[0] != idx.shape[0]:
+        raise ValueError("selected_indices and selected_coordinates length mismatch")
+    if np.any(idx < 0) or np.any(idx >= rho.shape[0]):
+        raise ValueError("selected_indices out of bounds")
+
+    if idx.size < 2:
+        nan = float("nan")
+        return {
+            "separation_violations": 0,
+            "minimum_margin_m": nan,
+            "ratio_min": nan,
+            "ratio_median": nan,
+            "ratio_p05": nan,
+            "ratio_p95": nan,
+        }
+
+    full_radius = density_to_nominal_radius(
+        density=rho,
+        feasible_mask=feasible,
+        spacing_scale=spacing_scale,
+    )
+    local_radius = full_radius[idx]
+
+    diffs = pts[:, None, :] - pts[None, :, :]
+    dist = np.linalg.norm(diffs, axis=2)
+
+    required = 0.5 * (local_radius[:, None] + local_radius[None, :])
+    np.fill_diagonal(dist, np.inf)
+    np.fill_diagonal(required, -np.inf)
+
+    margin = dist - required
+    violations = int(np.sum(margin < -tolerance) // 2)
+    minimum_margin = float(np.min(margin[np.isfinite(margin)]))
+
+    nn = np.min(dist, axis=1)
+    ratios = nn / local_radius
+
+    return {
+        "separation_violations": violations,
+        "minimum_margin_m": minimum_margin,
+        "ratio_min": float(np.min(ratios)),
+        "ratio_median": float(np.median(ratios)),
+        "ratio_p05": float(np.percentile(ratios, 5.0)),
+        "ratio_p95": float(np.percentile(ratios, 95.0)),
     }
