@@ -103,7 +103,6 @@ Full synthetic demo with plotting:
 
 ## Planned Algorithms (future)
 
-- density-weighted Lloyd / CVT
 - density-adapted Poisson-disk
 - optimal transport based methods
 
