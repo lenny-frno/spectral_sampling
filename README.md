@@ -87,6 +87,8 @@ print(result_cvt.selected_indices)
 Full synthetic demo with plotting:
 
 - examples/basic_density_sampling.py
+- examples/compare_samplers.py
+- examples/modifier_effects.py
 
 ## Diagnostics Included
 
@@ -127,4 +129,6 @@ Run example (with plotting):
 ```bash
 /bin/python3 -m pip install -e .[plot]
 /bin/python3 examples/basic_density_sampling.py
+/bin/python3 examples/compare_samplers.py
+/bin/python3 examples/modifier_effects.py
 ```

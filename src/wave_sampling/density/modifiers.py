@@ -45,7 +45,7 @@ def smootherstep(x: npt.ArrayLike, x0: float, x1: float) -> FloatArray:
     Uses S(t) = 6t^5 - 15t^4 + 10t^3 for t in [0, 1].
     """
     t = clipped_linear_transition(x, x0, x1)
-    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+    return t**3 * (t * (t * 6.0 - 15.0) + 10.0)
 
 
 def logistic_weight(
