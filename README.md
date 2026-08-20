@@ -34,9 +34,10 @@ Soft constraints modify preference weight, not feasibility. For example, distanc
 
 ## Current Sampler
 
-Implemented sampler:
+Implemented samplers:
 
 - density_weighted_farthest_point
+- density_weighted_lloyd_cvt
 
 Greedy score:
 
@@ -46,6 +47,17 @@ Greedy score:
 where d_i is nearest distance to already selected points.
 
 Important: this is a deterministic density-adapted greedy heuristic. It does not mathematically guarantee exact final point-process density equal to rho.
+
+For density-weighted Lloyd/CVT on a discrete candidate grid, the conceptual update is:
+
+- x_k <- integral over V_k of x * rho(x) dx / integral over V_k of rho(x) dx
+
+This library uses a discrete approximation with candidate masses w_i = rho_i * area_i,
+deterministic nearest-center partitioning, weighted centroids, and projection back to
+eligible candidates.
+
+Important: this is a deterministic discrete CVT heuristic. It does not mathematically
+guarantee global optimality or exact density reproduction.
 
 ## Reproducibility
 
@@ -59,14 +71,17 @@ Same inputs produce identical selected indices.
 import numpy as np
 from wave_sampling.density.field import DensityField
 from wave_sampling.samplers.farthest_point import density_weighted_farthest_point
+from wave_sampling.samplers.lloyd_cvt import density_weighted_lloyd_cvt
 
 coords = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
 shape = np.array([1.0, 2.0, 1.0, 1.0])
 feasible = np.array([True, True, True, True])
 
 field = DensityField.from_shape(coords, shape, feasible, n_points=2)
-result = density_weighted_farthest_point(field, n_points=2)
-print(result.selected_indices)
+result_fp = density_weighted_farthest_point(field, n_points=2)
+result_cvt = density_weighted_lloyd_cvt(field, n_points=2)
+print(result_fp.selected_indices)
+print(result_cvt.selected_indices)
 ```
 
 Full synthetic demo with plotting:
@@ -82,7 +97,8 @@ Full synthetic demo with plotting:
 ## Current Limitations
 
 - Candidate set is discrete (no continuous-domain sampling yet)
-- Only one sampler is implemented in v0.1
+- Both implemented samplers are deterministic heuristics, so diagnostics remain
+	necessary to evaluate density reproduction and regularity on each use case
 - Density reproduction diagnostics are candidate-grid based and intentionally simple
 
 ## Planned Algorithms (future)

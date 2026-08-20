@@ -3,10 +3,12 @@
 from wave_sampling.density.field import DensityField, normalize_shape_to_density
 from wave_sampling.result import SamplingResult
 from wave_sampling.samplers.farthest_point import density_weighted_farthest_point
+from wave_sampling.samplers.lloyd_cvt import density_weighted_lloyd_cvt
 
 __all__ = [
     "DensityField",
     "SamplingResult",
     "density_weighted_farthest_point",
+    "density_weighted_lloyd_cvt",
     "normalize_shape_to_density",
 ]
